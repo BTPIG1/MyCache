@@ -68,7 +68,7 @@ namespace MyCache {
 		void put(Key key, Value value) override{ // 判断key在不在链表中？在，则移到队头；否则先插入队头，size>capacity?是则弹出队尾。
 			if (capacity_ < 0)return;
 
-			std::lock_guard<std::mutex> lock(mtx); // 
+			std::lock_guard<std::mutex> lock(mutex_); // 
 			auto it = nodeMap_.find(key);
 			if (it != nodeMap_.end()) {
 				updateExistNode(it->second, value);
@@ -86,7 +86,7 @@ namespace MyCache {
 		}
 
 		bool get(Key key, Value& value) override{ // 上锁，map中找，找到先把节点移到最前，然后返回true
-			std::lock_guard<std::mutex>(mutex_);
+			std::lock_guard<std::mutex> lock(mutex_);
 			auto it = nodeMap_.find(key);
 			if (it != nodeMap_.end()) {
 				moveToMostRecent(it->second);
@@ -130,7 +130,7 @@ namespace MyCache {
 			node->next_ = dummyTail_;
 			node->prev_ = dummyTail_->prev_;
 			dummyTail_->prev_->next_ = node;
-			dummyTail_ - prev_ = node;
+			dummyTail_ -> prev_ = node;
 		}
 
 		void addNode(const Key& key,const Value& value) { // 先直接插入到尾节点，如果capacity<0弹出最后一个
@@ -142,7 +142,7 @@ namespace MyCache {
 		}
 
 		void evictLeastRecent() { // 弹出dummyHead_->next,并在nodeMap_中erase
-			nodeptr& node = dummyHead_->next_;
+			NodePtr& node = dummyHead_->next_;
 			removeNode(node);
 			nodeMap_.erase(node->getKey());
 		}
@@ -174,15 +174,7 @@ namespace MyCache {
 
 		Value get(Key key) { // 先到历史队列中更新次数，在去访问缓存。
 			int historyCount = historyList_->get(key);
-
-			if (historyCount >= k_) { // 我自己加的，为解决多次访问而没有写的问题
-				historyList_->removeNode(key);
-				MyLruCache<Key, Value>::put(key, value);
-			}
-			else {
-				historyList_->put(key, ++historyCount); // 假设此处historyCount == k如何处理？
-			}
-
+			historyList_->put(key, ++historyCount); // 假设此处historyCount == k如何处理？
 
 			return MyLruCache<Key, Value>::get(key);// 上面会不会存在问题？不会有问题，想一想假如k=4，刚刚好第四次访问，此时不应该加入缓存应该是下一次
 		}
@@ -197,7 +189,7 @@ namespace MyCache {
 		std::vector<std::unique_ptr<MyKLruCache<Key, Value>>> lruSliceCaches_;
 
 	public:
-		MyHashLru(size_t capacity, int slice) :capacity_(capacity), sliceNum_(slice > 0 ? sliceNum : std::thread::hardware_concurrency()) {
+		MyHashLru(size_t capacity, int slice) :capacity_(capacity), sliceNum_(slice > 0 ? sliceNum_ : std::thread::hardware_concurrency()) {
 			size_t size = std::ceil(capacity_ / static_cast<double>(sliceNum_));
 			for (int i = 0; i < sliceNum_; i++) {
 				lruSliceCaches_.emplace_back(std::make_unique<MyKLruCache<Key, Value>>(size));
